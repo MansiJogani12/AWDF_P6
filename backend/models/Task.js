@@ -7,10 +7,12 @@ const taskSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+
     description: {
       type: String,
       default: "",
     },
+
     completed: {
       type: Boolean,
       default: false,
@@ -21,6 +23,4 @@ const taskSchema = new mongoose.Schema(
   }
 );
 
-const Task = mongoose.model("Task", taskSchema);
-
-module.exports = Task;
+module.exports = mongoose.model("Task", taskSchema);

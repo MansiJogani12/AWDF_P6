@@ -1,80 +1,55 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-const dotenv = require("dotenv");
 
-dotenv.config();
-
-const taskRoutes = require(
-  "./routes/taskRoutes"
-);
-
-const authRoutes = require(
-  "./routes/authRoutes"
-);
+const taskRoutes = require("./routes/taskRoutes");
 
 const app = express();
 
-const PORT = process.env.PORT || 5000;
+const PORT = 5000;
 
+// ===============================
+// Middleware
+// ===============================
 
-// ==========================================
-// CHECK ENVIRONMENT VARIABLES
-// ==========================================
-
-if (!process.env.JWT_SECRET) {
-  console.error(
-    "ERROR: JWT_SECRET is missing in .env"
-  );
-
-  process.exit(1);
-}
-
-
-// ==========================================
-// MIDDLEWARE
-// ==========================================
-
+// CORS - allows React to communicate
+// with Express
 app.use(cors());
 
+// Allows Express to read JSON
 app.use(express.json());
 
+// ===============================
+// MongoDB Connection
+// ===============================
 
-// ==========================================
-// ROUTES
-// ==========================================
-
-app.get("/", (req, res) => {
-  res.json({
-    message: "Practical 7 Backend is Running",
+mongoose
+  .connect("mongodb://127.0.0.1:27017/practical6")
+  .then(() => {
+    console.log("MongoDB connected successfully");
+  })
+  .catch((error) => {
+    console.log("MongoDB connection error:");
+    console.log(error.message);
   });
-});
 
-app.use("/auth", authRoutes);
+// ===============================
+// Routes
+// ===============================
 
 app.use("/tasks", taskRoutes);
 
+// Test route
+app.get("/", (req, res) => {
+  res.send("Backend is running");
+});
 
-// ==========================================
-// DATABASE CONNECTION AND SERVER
-// ==========================================
+// ===============================
+// Start Server
+// ===============================
 
-mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log(
-      "MongoDB connected successfully"
-    );
-
-    app.listen(PORT, () => {
-      console.log(
-        `Server running at http://localhost:${PORT}`
-      );
-    });
-  })
-  .catch((error) => {
-    console.error(
-      "MongoDB connection failed:",
-      error.message
-    );
-  });
+app.listen(PORT, () => {
+  console.log(
+    `Server running on http://localhost:${PORT}`
+  );
+});
