@@ -1,93 +1,215 @@
 const BASE_URL = "http://localhost:5000";
 
-// ===============================
-// GET - Get all tasks
-// ===============================
 
-export const getTasks = async () => {
-  const response = await fetch(`${BASE_URL}/tasks`);
+// ==========================================
+// GET AUTH HEADERS
+// ==========================================
 
-  if (!response.ok) {
-    throw new Error("Failed to fetch tasks");
+const getAuthHeaders = () => {
+  const token = localStorage.getItem("token");
+
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
-  return response.json();
+  return headers;
 };
 
-// ===============================
-// POST - Create task
-// ===============================
 
-export const createTask = async (task) => {
-  const response = await fetch(`${BASE_URL}/tasks`, {
-    method: "POST",
+// ==========================================
+// HANDLE RESPONSE
+// ==========================================
 
-    headers: {
-      "Content-Type": "application/json",
-    },
+const handleResponse = async (response) => {
+  let data;
 
-    body: JSON.stringify(task),
-  });
+  try {
+    data = await response.json();
+  } catch (error) {
+    data = {
+      message: "Invalid server response",
+    };
+  }
 
-  if (!response.ok) {
-    const data = await response.json();
+  if (response.status === 401) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
 
-    throw new Error(
-      data.message || "Failed to create task"
+    window.dispatchEvent(
+      new Event("auth-expired")
     );
   }
 
-  return response.json();
+  if (!response.ok) {
+    throw new Error(
+      data.message || "Request failed"
+    );
+  }
+
+  return data;
 };
 
-// ===============================
-// PUT - Update task
-// ===============================
 
-export const updateTask = async (id, task) => {
+// ==========================================
+// REGISTER
+// ==========================================
+
+export const registerUser = async (
+  email,
+  password
+) => {
   const response = await fetch(
-    `${BASE_URL}/tasks/${id}`,
+    `${BASE_URL}/auth/register`,
     {
-      method: "PUT",
+      method: "POST",
 
       headers: {
         "Content-Type": "application/json",
       },
 
-      body: JSON.stringify(task),
+      body: JSON.stringify({
+        email,
+        password,
+      }),
     }
   );
 
-  if (!response.ok) {
-    const data = await response.json();
-
-    throw new Error(
-      data.message || "Failed to update task"
-    );
-  }
-
-  return response.json();
+  return handleResponse(response);
 };
 
-// ===============================
-// DELETE - Delete task
-// ===============================
+
+// ==========================================
+// LOGIN
+// ==========================================
+
+export const loginUser = async (
+  email,
+  password
+) => {
+  const response = await fetch(
+    `${BASE_URL}/auth/login`,
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    }
+  );
+
+  return handleResponse(response);
+};
+
+
+// ==========================================
+// GET CURRENT USER
+// ==========================================
+
+export const getCurrentUser = async () => {
+  const response = await fetch(
+    `${BASE_URL}/auth/me`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return handleResponse(response);
+};
+
+
+// ==========================================
+// GET TASKS
+// ==========================================
+
+export const getTasks = async () => {
+  const response = await fetch(
+    `${BASE_URL}/tasks`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(),
+    }
+  );
+
+  return handleResponse(response);
+};
+
+
+// ==========================================
+// CREATE TASK
+// ==========================================
+
+export const createTask = async (
+  title,
+  description
+) => {
+  const response = await fetch(
+    `${BASE_URL}/tasks`,
+    {
+      method: "POST",
+
+      headers: getAuthHeaders(),
+
+      body: JSON.stringify({
+        title,
+        description,
+        completed: false,
+      }),
+    }
+  );
+
+  return handleResponse(response);
+};
+
+
+// ==========================================
+// UPDATE TASK
+// ==========================================
+
+export const updateTask = async (
+  id,
+  task
+) => {
+  const response = await fetch(
+    `${BASE_URL}/tasks/${id}`,
+    {
+      method: "PUT",
+
+      headers: getAuthHeaders(),
+
+      body: JSON.stringify({
+        title: task.title,
+        description: task.description,
+        completed: task.completed,
+      }),
+    }
+  );
+
+  return handleResponse(response);
+};
+
+
+// ==========================================
+// DELETE TASK
+// ==========================================
 
 export const deleteTask = async (id) => {
   const response = await fetch(
     `${BASE_URL}/tasks/${id}`,
     {
       method: "DELETE",
+      headers: getAuthHeaders(),
     }
   );
 
-  if (!response.ok) {
-    const data = await response.json();
-
-    throw new Error(
-      data.message || "Failed to delete task"
-    );
-  }
-
-  return response.json();
+  return handleResponse(response);
 };

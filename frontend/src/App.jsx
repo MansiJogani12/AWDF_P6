@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
 import {
+  registerUser,
+  loginUser,
+  getCurrentUser,
   getTasks,
   createTask,
   updateTask,
@@ -8,403 +11,734 @@ import {
 } from "./api";
 
 function App() {
-  // ===============================
-  // State
-  // ===============================
 
-  const [tasks, setTasks] = useState([]);
+  // ==========================================
+  // USER STATE
+  // ==========================================
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [user, setUser] = useState(null);
 
-  // Loading states
-  const [loading, setLoading] = useState(false);
+  const [authMode, setAuthMode] =
+    useState("login");
+
+  const [email, setEmail] =
+    useState("");
+
+  const [password, setPassword] =
+    useState("");
+
+  const [authLoading, setAuthLoading] =
+    useState(false);
+
+
+  // ==========================================
+  // TASK STATE
+  // ==========================================
+
+  const [tasks, setTasks] =
+    useState([]);
+
+  const [title, setTitle] =
+    useState("");
+
+  const [description, setDescription] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(false);
+
   const [creating, setCreating] = useState(false);
-  const [updatingId, setUpdatingId] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
 
-  // Error
-  const [error, setError] = useState("");
+  // ==========================================
+  // EDIT STATE
+  // ==========================================
 
-  // Toast
-  const [toast, setToast] = useState("");
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
 
-  // ===============================
-  // Toast
-  // ===============================
 
-  const showToast = (message) => {
-    setToast(message);
+  // ==========================================
+  // MESSAGE STATE
+  // ==========================================
 
-    setTimeout(() => {
-      setToast("");
-    }, 2500);
-  };
+  const [message, setMessage] =
+    useState("");
 
-  // ===============================
-  // GET - Load tasks
-  // ===============================
+  const [error, setError] =
+    useState("");
+
+
+  // ==========================================
+  // LOAD CURRENT USER
+  // ==========================================
+
+  useEffect(() => {
+
+    const token =
+      localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    const loadUser = async () => {
+      try {
+
+        const data =
+          await getCurrentUser();
+
+        setUser(data.user);
+
+      } catch (error) {
+
+        logout();
+
+      }
+    };
+
+    loadUser();
+
+  }, []);
+
+
+  // ==========================================
+  // HANDLE TOKEN EXPIRY
+  // ==========================================
+
+  useEffect(() => {
+
+    const handleExpiredToken = () => {
+
+      logout();
+
+      setError(
+        "Your session expired. Please login again."
+      );
+    };
+
+    window.addEventListener(
+      "auth-expired",
+      handleExpiredToken
+    );
+
+    return () => {
+      window.removeEventListener(
+        "auth-expired",
+        handleExpiredToken
+      );
+    };
+
+  }, []);
+
+
+  // ==========================================
+  // LOAD TASKS
+  // ==========================================
+
+  useEffect(() => {
+
+    if (user) {
+      loadTasks();
+    }
+
+  }, [user]);
+
 
   const loadTasks = async () => {
-    try {
-      setLoading(true);
-      setError("");
 
-      const data = await getTasks();
+    try {
+
+      setLoading(true);
+
+      const data =
+        await getTasks();
 
       setTasks(data);
-    } catch (err) {
-      setError(
-        "Failed to load tasks: " + err.message
-      );
+
+    } catch (error) {
+
+      setError(error.message);
+
     } finally {
+
       setLoading(false);
+
     }
   };
 
-  // Load tasks when page opens
-  useEffect(() => {
-    loadTasks();
-  }, []);
 
-  // ===============================
-  // POST - Create task
-  // ===============================
+  // ==========================================
+  // REGISTER / LOGIN
+  // ==========================================
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
+  const handleAuth = async (event) => {
+
+    event.preventDefault();
 
     setError("");
+    setMessage("");
+
+    if (!email || !password) {
+
+      setError(
+        "Email and password are required"
+      );
+
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+
+      if (authMode === "register") {
+
+        await registerUser(
+          email,
+          password
+        );
+
+        setMessage(
+          "Registration successful. Please login."
+        );
+
+        setAuthMode("login");
+
+        setPassword("");
+
+      } else {
+
+        const data =
+          await loginUser(
+            email,
+            password
+          );
+
+        localStorage.setItem(
+          "token",
+          data.token
+        );
+
+        localStorage.setItem(
+          "user",
+          JSON.stringify(data.user)
+        );
+
+        setUser(data.user);
+
+        setMessage(
+          "Login successful"
+        );
+
+        setPassword("");
+      }
+
+    } catch (error) {
+
+      setError(error.message);
+
+    } finally {
+
+      setAuthLoading(false);
+
+    }
+  };
+
+
+  // ==========================================
+  // CREATE TASK
+  // ==========================================
+
+  const handleCreateTask = async (
+    event
+  ) => {
+
+    event.preventDefault();
+
+    setError("");
+    setMessage("");
 
     if (!title.trim()) {
-      setError("Please enter a task title");
+
+      setError(
+        "Task title is required"
+      );
+
       return;
     }
 
     setCreating(true);
 
-    // Temporary task for optimistic UI
-    const temporaryTask = {
-      _id: "temporary-" + Date.now(),
-      title: title.trim(),
-      description: description,
-      completed: false,
-      optimistic: true,
-    };
-
-    // Show task immediately
-    setTasks((previousTasks) => [
-      temporaryTask,
-      ...previousTasks,
-    ]);
-
-    // Save form data before clearing
-    const taskData = {
-      title: title.trim(),
-      description: description,
-      completed: false,
-    };
-
-    // Clear form
-    setTitle("");
-    setDescription("");
-
     try {
-      // Send to backend
-      const newTask = await createTask(taskData);
 
-      // Replace temporary task
-      // with MongoDB task
-      setTasks((previousTasks) =>
-        previousTasks.map((task) =>
-          task._id === temporaryTask._id
-            ? newTask
-            : task
-        )
+      const newTask =
+        await createTask(
+          title,
+          description
+        );
+
+      setTasks(
+        (previousTasks) => [
+          newTask,
+          ...previousTasks,
+        ]
       );
 
-      showToast("Task created successfully");
-    } catch (err) {
-      // Remove temporary task
-      // if backend fails
-      setTasks((previousTasks) =>
-        previousTasks.filter(
-          (task) =>
-            task._id !== temporaryTask._id
-        )
+      setTitle("");
+
+      setDescription("");
+
+      setMessage(
+        "Task created successfully"
       );
 
-      setError(
-        "Failed to create task: " + err.message
-      );
+    } catch (error) {
+
+      setError(error.message);
+
     } finally {
+
       setCreating(false);
+
     }
   };
 
-  // ===============================
-  // PUT - Mark Complete/Pending
-  // ===============================
 
-  const handleUpdate = async (task) => {
-    setUpdatingId(task._id);
+  // ==========================================
+  // TOGGLE TASK
+  // ==========================================
+
+  const handleToggleTask = async (
+    task
+  ) => {
+
     setError("");
 
     try {
-      const updatedTask = await updateTask(
-        task._id,
-        {
-          title: task.title,
-          description: task.description,
-          completed: !task.completed,
-        }
+
+      const updatedTask =
+        await updateTask(
+          task._id,
+          {
+            title: task.title,
+            description:
+              task.description,
+            completed:
+              !task.completed,
+          }
+        );
+
+      setTasks(
+        (previousTasks) =>
+          previousTasks.map(
+            (currentTask) => {
+
+              if (
+                currentTask._id ===
+                updatedTask._id
+              ) {
+                return updatedTask;
+              }
+
+              return currentTask;
+            }
+          )
       );
 
-      // Update state using backend response
-      setTasks((previousTasks) =>
-        previousTasks.map((item) =>
-          item._id === updatedTask._id
-            ? updatedTask
-            : item
-        )
-      );
+    } catch (error) {
 
-      if (updatedTask.completed) {
-        showToast("Task marked as completed");
-      } else {
-        showToast("Task marked as pending");
-      }
-    } catch (err) {
-      setError(
-        "Failed to update task: " + err.message
-      );
-    } finally {
-      setUpdatingId(null);
+      setError(error.message);
+
     }
   };
 
-  // ===============================
-  // DELETE
-  // ===============================
+  // ==========================================
+  // EDIT TASK
+  // ==========================================
 
-  const handleDelete = async (id) => {
-    const confirmDelete = window.confirm(
-      "Are you sure you want to delete this task?"
-    );
+  const startEditing = (task) => {
+    setEditingTaskId(task._id);
+    setEditTitle(task.title);
+    setEditDescription(task.description);
+  };
 
-    if (!confirmDelete) {
+  const cancelEditing = () => {
+    setEditingTaskId(null);
+    setEditTitle("");
+    setEditDescription("");
+  };
+
+  const handleSaveEdit = async (task) => {
+    setError("");
+    setMessage("");
+
+    if (!editTitle.trim()) {
+      setError("Task title is required");
       return;
     }
 
-    setDeletingId(id);
-    setError("");
-
     try {
-      await deleteTask(id);
+      const updatedTask = await updateTask(task._id, {
+        title: editTitle,
+        description: editDescription,
+        completed: task.completed,
+      });
 
-      // Remove from UI only after
-      // backend confirms success
       setTasks((previousTasks) =>
-        previousTasks.filter(
-          (task) => task._id !== id
+        previousTasks.map((currentTask) =>
+          currentTask._id === updatedTask._id ? updatedTask : currentTask
         )
       );
 
-      showToast("Task deleted successfully");
-    } catch (err) {
-      setError(
-        "Failed to delete task: " + err.message
-      );
-    } finally {
-      setDeletingId(null);
+      setEditingTaskId(null);
+      setMessage("Task updated successfully");
+    } catch (error) {
+      setError(error.message);
     }
   };
 
-  // ===============================
-  // UI
-  // ===============================
+  // ==========================================
+  // DELETE TASK
+  // ==========================================
+
+  const handleDeleteTask = async (
+    id
+  ) => {
+
+    const confirmed =
+      window.confirm(
+        "Are you sure you want to delete this task?"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+
+      await deleteTask(id);
+
+      setTasks(
+        (previousTasks) =>
+          previousTasks.filter(
+            (task) =>
+              task._id !== id
+          )
+      );
+
+      setMessage(
+        "Task deleted successfully"
+      );
+
+    } catch (error) {
+
+      setError(error.message);
+
+    }
+  };
+
+
+  // ==========================================
+  // LOGOUT
+  // ==========================================
+
+  const logout = () => {
+
+    localStorage.removeItem(
+      "token"
+    );
+
+    localStorage.removeItem(
+      "user"
+    );
+
+    setUser(null);
+
+    setTasks([]);
+
+    setEmail("");
+
+    setPassword("");
+  };
+
+
+  // ==========================================
+  // LOGIN / REGISTER PAGE
+  // ==========================================
+
+  if (!user) {
+
+    return (
+
+      <div className="container">
+
+        <div className="auth-card">
+
+          <h1>
+            Task Manager
+          </h1>
+
+          <h2>
+            {authMode === "login"
+              ? "Login"
+              : "Register"}
+          </h2>
+
+
+          {message && (
+            <div className="success">
+              {message}
+            </div>
+          )}
+
+
+          {error && (
+            <div className="error">
+              {error}
+            </div>
+          )}
+
+
+          <form
+            onSubmit={handleAuth}
+          >
+
+            <input
+              type="email"
+              placeholder="Enter Email"
+              value={email}
+              onChange={(event) =>
+                setEmail(
+                  event.target.value
+                )
+              }
+            />
+
+
+            <input
+              type="password"
+              placeholder="Enter Password"
+              value={password}
+              onChange={(event) =>
+                setPassword(
+                  event.target.value
+                )
+              }
+            />
+
+
+            <button
+              type="submit"
+              disabled={authLoading}
+            >
+
+              {authLoading
+                ? "Please wait..."
+                : authMode === "login"
+                  ? "Login"
+                  : "Register"}
+
+            </button>
+
+          </form>
+
+
+          <button
+            className="secondary-button"
+            onClick={() => {
+
+              setAuthMode(
+                authMode === "login"
+                  ? "register"
+                  : "login"
+              );
+
+              setError("");
+
+              setMessage("");
+
+            }}
+          >
+
+            {authMode === "login"
+              ? "New User? Register"
+              : "Already Registered? Login"}
+
+          </button>
+
+        </div>
+
+      </div>
+    );
+  }
+
+
+  // ==========================================
+  // TASK MANAGER PAGE
+  // ==========================================
 
   return (
-    <div
-      style={{
-        maxWidth: "800px",
-        margin: "40px auto",
-        padding: "20px",
-        fontFamily: "Arial",
-      }}
-    >
-      <h1>Task Manager</h1>
 
-      {/* =========================
-          Toast
-      ========================= */}
+    <div className="container">
 
-      {toast && (
-        <div
-          style={{
-            backgroundColor: "green",
-            color: "white",
-            padding: "12px",
-            marginBottom: "15px",
-            borderRadius: "5px",
-          }}
+      <div className="header">
+
+        <div>
+
+          <h1>
+            Task Manager
+          </h1>
+
+          <p>
+            Logged in as:
+            {" "}
+            <strong>
+              {user.email}
+            </strong>
+          </p>
+
+        </div>
+
+
+        <button
+          className="logout-button"
+          onClick={logout}
         >
-          {toast}
+          Logout
+        </button>
+
+      </div>
+
+
+      {message && (
+        <div className="success">
+          {message}
         </div>
       )}
 
-      {/* =========================
-          Error
-      ========================= */}
 
       {error && (
-        <div
-          style={{
-            backgroundColor: "red",
-            color: "white",
-            padding: "12px",
-            marginBottom: "15px",
-            borderRadius: "5px",
-          }}
-        >
+        <div className="error">
           {error}
         </div>
       )}
 
-      {/* =========================
-          Create Form
-      ========================= */}
 
-      <form onSubmit={handleCreate}>
-        <input
-          type="text"
-          placeholder="Task title"
-          value={title}
-          onChange={(e) =>
-            setTitle(e.target.value)
-          }
-          style={{
-            padding: "10px",
-            width: "300px",
-          }}
-        />
+      <div className="task-form">
 
-        <br />
-        <br />
+        <h2>
+          Add New Task
+        </h2>
 
-        <textarea
-          placeholder="Task description"
-          value={description}
-          onChange={(e) =>
-            setDescription(e.target.value)
-          }
-          style={{
-            padding: "10px",
-            width: "300px",
-            height: "80px",
-          }}
-        />
-
-        <br />
-        <br />
-
-        <button
-          type="submit"
-          disabled={creating}
-          style={{
-            padding: "10px 20px",
-          }}
+        <form
+          onSubmit={handleCreateTask}
         >
-          {creating ? "Adding..." : "Add Task"}
-        </button>
-      </form>
 
-      <hr />
+          <input
+            type="text"
+            placeholder="Task Title"
+            value={title}
+            onChange={(event) =>
+              setTitle(
+                event.target.value
+              )
+            }
+          />
 
-      {/* =========================
-          Loading
-      ========================= */}
+
+          <textarea
+            placeholder="Task Description"
+            value={description}
+            onChange={(event) =>
+              setDescription(
+                event.target.value
+              )
+            }
+          />
+
+
+          <button
+            type="submit"
+            disabled={creating}
+          >
+
+            {creating
+              ? "Adding..."
+              : "Add Task"}
+
+          </button>
+
+        </form>
+
+      </div>
+
+
+      <h2>
+        My Tasks
+      </h2>
+
 
       {loading && (
-        <p>Loading tasks...</p>
+        <p>
+          Loading tasks...
+        </p>
       )}
 
-      <h2>Tasks</h2>
 
-      {/* =========================
-          No tasks
-      ========================= */}
-
-      {!loading && tasks.length === 0 && (
-        <p>No tasks available</p>
-      )}
-
-      {/* =========================
-          Task List
-      ========================= */}
-
-      {tasks.map((task) => (
-        <div
-          key={task._id}
-          style={{
-            border: "1px solid gray",
-            padding: "15px",
-            marginBottom: "15px",
-            borderRadius: "5px",
-          }}
-        >
-          <h3>{task.title}</h3>
-
-          <p>{task.description}</p>
-
+      {!loading &&
+        tasks.length === 0 && (
           <p>
-            <strong>Status:</strong>{" "}
-            {task.completed
-              ? "Completed"
-              : "Pending"}
+            No tasks found.
           </p>
+        )}
 
-          {/* =====================
-              UPDATE
-          ===================== */}
 
-          <button
-            onClick={() =>
-              handleUpdate(task)
-            }
-            disabled={
-              updatingId === task._id ||
-              task.optimistic
-            }
-          >
-            {updatingId === task._id
-              ? "Updating..."
-              : task.completed
-              ? "Mark Pending"
-              : "Mark Complete"}
-          </button>
+      <div className="task-list">
 
-          {" "}
+        {tasks.map((task) => (
+          <div className="task-card" key={task._id}>
+            {editingTaskId === task._id ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                />
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc', minHeight: '60px' }}
+                />
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={() => handleSaveEdit(task)}>Save</button>
+                  <button className="secondary-button" onClick={cancelEditing} style={{ background: '#6c757d' }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h3>{task.title}</h3>
+                <p>{task.description}</p>
+                <p>
+                  Status: <strong>{task.completed ? "Completed" : "Pending"}</strong>
+                </p>
+                <button onClick={() => startEditing(task)} style={{ marginRight: '8px' }}>
+                  Edit
+                </button>
+                <button onClick={() => handleToggleTask(task)} style={{ marginRight: '8px' }}>
+                  {task.completed ? "Mark Pending" : "Mark Completed"}
+                </button>
+                <button className="delete-button" onClick={() => handleDeleteTask(task._id)}>
+                  Delete
+                </button>
+              </>
+            )}
+          </div>
+        ))}
 
-          {/* =====================
-              DELETE
-          ===================== */}
+      </div>
 
-          <button
-            onClick={() =>
-              handleDelete(task._id)
-            }
-            disabled={
-              deletingId === task._id ||
-              task.optimistic
-            }
-          >
-            {deletingId === task._id
-              ? "Deleting..."
-              : "Delete"}
-          </button>
-        </div>
-      ))}
     </div>
   );
 }
